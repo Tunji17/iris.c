@@ -60,7 +60,7 @@ endif
 	@echo "  make lib      - Build static library"
 	@echo ""
 	@echo "Example: make mps && ./iris -d flux-klein-4b -p \"a cat\" -o cat.png"
-	@echo "         make serve-blas && ./iris-server -d flux-klein-4b --port 8080"
+	@echo "         make serve-blas && ./iris-server -d flux-klein-4b"
 
 # =============================================================================
 # Backend: generic (pure C, no BLAS)

@@ -24,7 +24,7 @@
 #endif
 #endif
 
-#define DEFAULT_PORT 8080
+#define DEFAULT_PORT 2468
 
 static void print_usage(const char *prog) {
     fprintf(stderr, "Iris HTTP Server\n\n");

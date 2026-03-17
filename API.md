@@ -6,7 +6,7 @@ The Iris HTTP server exposes image generation capabilities via a REST API.
 All generation endpoints are **asynchronous**: POST requests return a job ID,
 and clients poll `GET /jobs/{id}` to retrieve results.
 
-**Base URL:** `http://localhost:8080` (default port, configurable with `--port`)
+**Base URL:** `http://localhost:2468` (default port, configurable with `--port`)
 
 **Content Type:** All request bodies must be `application/json`.
 
@@ -21,13 +21,13 @@ make serve-blas      # BLAS acceleration (~30x faster)
 make serve-mps       # Apple Silicon Metal GPU (fastest)
 
 # Run
-./iris-server --dir <model-path> [--port 8080] [--mmap] [--no-mmap] [--base]
+./iris-server --dir <model-path> [--port 2468] [--mmap] [--no-mmap] [--base]
 ```
 
 | Flag         | Description                                      | Default |
 |--------------|--------------------------------------------------|---------|
 | `--dir, -d`  | Path to model directory (required)               | -       |
-| `--port, -p` | TCP port to listen on                            | 8080    |
+| `--port, -p` | TCP port to listen on                            | 2468    |
 | `--mmap, -m` | Use memory-mapped weights (lower memory)         | on      |
 | `--no-mmap`  | Load all weights upfront (faster inference)      | -       |
 | `--base`     | Force base model mode (50-step CFG)              | -       |
@@ -497,17 +497,17 @@ on the main thread regardless of whether a job is running.
 
 ```bash
 # Submit
-curl -s -X POST http://localhost:8080/generate \
+curl -s -X POST http://localhost:2468/generate \
   -H "Content-Type: application/json" \
   -d '{"prompt":"a cat sitting on a rainbow","width":512,"height":512,"seed":42}'
 # {"job_id":1,"status":"pending"}
 
 # Poll until done
-curl -s http://localhost:8080/jobs/1
+curl -s http://localhost:2468/jobs/1
 # {"job_id":1,"status":"running"}
 
 # Download result
-curl -s http://localhost:8080/jobs/1 -o cat.png
+curl -s http://localhost:2468/jobs/1 -o cat.png
 ```
 
 ### Image-to-image
@@ -517,30 +517,30 @@ curl -s http://localhost:8080/jobs/1 -o cat.png
 IMAGE_B64=$(base64 -w0 photo.png)
 
 # Submit
-curl -s -X POST http://localhost:8080/img2img \
+curl -s -X POST http://localhost:2468/img2img \
   -H "Content-Type: application/json" \
   -d "{\"prompt\":\"oil painting style\",\"image\":\"$IMAGE_B64\",\"width\":512,\"height\":512}"
 
 # Poll and download
-curl -s http://localhost:8080/jobs/1 -o painting.png
+curl -s http://localhost:2468/jobs/1 -o painting.png
 ```
 
 ### Cache and reuse embeddings
 
 ```bash
 # Encode text once
-curl -s -X POST http://localhost:8080/encode-text \
+curl -s -X POST http://localhost:2468/encode-text \
   -H "Content-Type: application/json" \
   -d '{"prompt":"a beautiful sunset over mountains"}'
 # {"job_id":1,"status":"pending"}
 
 # Get embeddings
-RESULT=$(curl -s "http://localhost:8080/jobs/1?format=json")
+RESULT=$(curl -s "http://localhost:2468/jobs/1?format=json")
 EMB=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['embeddings'])")
 
 # Generate multiple images with same embeddings
 for SEED in 1 2 3 4; do
-  curl -s -X POST http://localhost:8080/generate-with-embeddings \
+  curl -s -X POST http://localhost:2468/generate-with-embeddings \
     -H "Content-Type: application/json" \
     -d "{\"embeddings\":\"$EMB\",\"seq_len\":512,\"width\":512,\"height\":512,\"seed\":$SEED}"
 done
@@ -551,10 +551,10 @@ done
 ```bash
 JOB_ID=1
 while true; do
-  STATUS=$(curl -s http://localhost:8080/jobs/$JOB_ID)
+  STATUS=$(curl -s http://localhost:2468/jobs/$JOB_ID)
   STATE=$(echo "$STATUS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))")
   if [ "$STATE" = "complete" ]; then
-    curl -s http://localhost:8080/jobs/$JOB_ID -o result.png
+    curl -s http://localhost:2468/jobs/$JOB_ID -o result.png
     echo "Done: result.png"
     break
   elif [ "$STATE" = "failed" ]; then
