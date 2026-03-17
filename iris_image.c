@@ -899,6 +899,32 @@ iris_image *iris_image_load(const char *path) {
     return img;
 }
 
+iris_image *iris_image_load_mem(const uint8_t *data, size_t len) {
+    if (!data || len < 2) return NULL;
+
+    /* Detect format by magic bytes */
+    if (len >= 8 && data[0] == 0x89 && data[1] == 'P') {
+        /* PNG - use fmemopen to feed to existing load_png */
+        FILE *f = fmemopen((void *)data, len, "rb");
+        if (!f) return NULL;
+        iris_image *img = load_png(f);
+        fclose(f);
+        return img;
+    } else if (data[0] == 0xFF && data[1] == 0xD8) {
+        /* JPEG */
+        jpeg_image *jpg = jpeg_load_mem(data, len);
+        if (!jpg) return NULL;
+        iris_image *img = iris_image_create(jpg->width, jpg->height, jpg->channels);
+        if (!img) { jpeg_free(jpg); return NULL; }
+        memcpy(img->data, jpg->data,
+               (size_t)jpg->width * jpg->height * jpg->channels);
+        jpeg_free(jpg);
+        return img;
+    }
+
+    return NULL;
+}
+
 int iris_image_save(const iris_image *img, const char *path) {
     if (!img || !path) return -1;
 
@@ -942,6 +968,31 @@ int iris_image_save_with_seed(const iris_image *img, const char *path, int64_t s
 
     fclose(f);
     return result;
+}
+
+/* ========================================================================
+ * In-Memory PNG Encoding
+ * ======================================================================== */
+
+uint8_t *iris_image_to_png_mem(const iris_image *img, size_t *out_len, int64_t seed) {
+    if (!img || !out_len) return NULL;
+
+    char *buf = NULL;
+    size_t buf_len = 0;
+    FILE *f = open_memstream(&buf, &buf_len);
+    if (!f) return NULL;
+
+    int has_seed = (seed >= 0);
+    int result = save_png_with_metadata(img, f, seed, has_seed);
+    fclose(f);
+
+    if (result != 0) {
+        free(buf);
+        return NULL;
+    }
+
+    *out_len = buf_len;
+    return (uint8_t *)buf;
 }
 
 /* ========================================================================

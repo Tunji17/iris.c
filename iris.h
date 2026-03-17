@@ -207,6 +207,12 @@ iris_image *iris_generate_with_embeddings_and_noise(iris_ctx *ctx,
 iris_image *iris_image_load(const char *path);
 
 /*
+ * Load image from memory buffer (PNG or JPEG, detected by magic bytes).
+ * Returns NULL on error.
+ */
+iris_image *iris_image_load_mem(const uint8_t *data, size_t len);
+
+/*
  * Save image to file (format determined by extension).
  * Supports: .png, .ppm
  * Returns 0 on success, -1 on error.
@@ -234,6 +240,13 @@ void iris_image_free(iris_image *img);
  * Resize image using bilinear interpolation.
  */
 iris_image *iris_image_resize(const iris_image *img, int new_width, int new_height);
+
+/*
+ * Encode image to PNG in memory.
+ * Returns malloc'd buffer, caller must free().
+ * seed: embedded in PNG metadata if >= 0, omitted if < 0.
+ */
+uint8_t *iris_image_to_png_mem(const iris_image *img, size_t *out_len, int64_t seed);
 
 /* ========================================================================
  * Utility Functions

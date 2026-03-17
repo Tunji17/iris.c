@@ -15,15 +15,18 @@ SRCS = iris.c iris_kernels.c iris_tokenizer.c iris_vae.c iris_transformer_flux.c
 OBJS = $(SRCS:.c=.o)
 CLI_SRCS = iris_cli.c linenoise.c embcache.c
 CLI_OBJS = $(CLI_SRCS:.c=.o)
+HTTP_SRCS = iris_http.c
+HTTP_OBJS = $(HTTP_SRCS:.c=.o)
 MAIN = main.c
 TARGET = iris
+SERVER_TARGET = iris-server
 LIB = libiris.a
 
 # Debug build flags
 DEBUG_CFLAGS = -Wall -Wextra -g -O0 -DDEBUG -fsanitize=address
 
-.PHONY: all clean debug lib install info test pngtest help generic blas mps
-.NOTPARALLEL: mps
+.PHONY: all clean debug lib install info test pngtest help generic blas mps serve-generic serve-blas serve-mps
+.NOTPARALLEL: mps serve-mps
 
 # Default: show available targets
 all: help
@@ -40,6 +43,15 @@ ifeq ($(UNAME_M),arm64)
 endif
 endif
 	@echo ""
+	@echo "HTTP server:"
+	@echo "  make serve-generic - HTTP server, pure C backend"
+	@echo "  make serve-blas    - HTTP server, BLAS backend"
+ifeq ($(UNAME_S),Darwin)
+ifeq ($(UNAME_M),arm64)
+	@echo "  make serve-mps     - HTTP server, Metal GPU backend"
+endif
+endif
+	@echo ""
 	@echo "Other targets:"
 	@echo "  make clean    - Remove build artifacts"
 	@echo "  make test     - Run inference test"
@@ -48,6 +60,7 @@ endif
 	@echo "  make lib      - Build static library"
 	@echo ""
 	@echo "Example: make mps && ./iris -d flux-klein-4b -p \"a cat\" -o cat.png"
+	@echo "         make serve-blas && ./iris-server -d flux-klein-4b --port 8080"
 
 # =============================================================================
 # Backend: generic (pure C, no BLAS)
@@ -110,9 +123,58 @@ mps:
 endif
 
 # =============================================================================
+# HTTP Server: generic
+# =============================================================================
+serve-generic: CFLAGS = $(CFLAGS_BASE) -DGENERIC_BUILD
+serve-generic: LDFLAGS += -lpthread
+serve-generic: clean $(SERVER_TARGET)
+	@echo ""
+	@echo "Built iris-server with GENERIC backend"
+
+# =============================================================================
+# HTTP Server: blas
+# =============================================================================
+ifeq ($(UNAME_S),Darwin)
+serve-blas: CFLAGS = $(CFLAGS_BASE) -DUSE_BLAS -DACCELERATE_NEW_LAPACK
+serve-blas: LDFLAGS += -framework Accelerate -lpthread
+else
+serve-blas: CFLAGS = $(CFLAGS_BASE) -DUSE_BLAS -DUSE_OPENBLAS -I/usr/include/openblas
+serve-blas: LDFLAGS += -lopenblas -lpthread
+endif
+serve-blas: clean $(SERVER_TARGET)
+	@echo ""
+	@echo "Built iris-server with BLAS backend"
+
+# =============================================================================
+# HTTP Server: mps
+# =============================================================================
+ifeq ($(UNAME_S),Darwin)
+ifeq ($(UNAME_M),arm64)
+serve-mps: clean serve-mps-build
+	@echo ""
+	@echo "Built iris-server with MPS backend"
+
+serve-mps-build: $(SRCS:.c=.mps.o) $(HTTP_SRCS:.c=.mps.o) iris_metal.o main_http.mps.o
+	$(CC) $(MPS_CFLAGS) -o $(SERVER_TARGET) $^ $(MPS_LDFLAGS) -lpthread
+
+else
+serve-mps:
+	@echo "Error: MPS backend requires Apple Silicon (arm64)"
+	@exit 1
+endif
+else
+serve-mps:
+	@echo "Error: MPS backend requires macOS"
+	@exit 1
+endif
+
+# =============================================================================
 # Build rules
 # =============================================================================
 $(TARGET): $(OBJS) $(CLI_OBJS) main.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+$(SERVER_TARGET): $(OBJS) $(HTTP_OBJS) main_http.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 lib: $(LIB)
@@ -155,7 +217,7 @@ install: $(TARGET) $(LIB)
 	install -m 644 iris_kernels.h /usr/local/include/
 
 clean:
-	rm -f $(OBJS) $(CLI_OBJS) *.mps.o iris_metal.o main.o $(TARGET) $(LIB)
+	rm -f $(OBJS) $(CLI_OBJS) $(HTTP_OBJS) *.mps.o iris_metal.o main.o main_http.o $(TARGET) $(SERVER_TARGET) $(LIB)
 	rm -f iris_shaders_source.h
 
 info:
@@ -192,3 +254,5 @@ iris_cli.o: iris_cli.c iris_cli.h iris.h iris_qwen3.h embcache.h linenoise.h ter
 linenoise.o: linenoise.c linenoise.h
 embcache.o: embcache.c embcache.h
 main.o: main.c iris.h iris_kernels.h iris_cli.h terminals.h
+iris_http.o: iris_http.c iris_http.h iris.h
+main_http.o: main_http.c iris.h iris_http.h
